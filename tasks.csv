@@ -1,7 +1,7 @@
-task_id,description,priority,status
-1,Fix bug in login page,High,Complete
-2,Write documentation,Medium,Incomplete
-3,Add new task feature,High,Incomplete
-4,Refactor old code,Low,Complete
-5,Design database schema,High,Complete
-6,Test edge cases,Medium,Incomplete
+task_id,description,priority,status,due_date
+1,Fix bug in login page,High,Complete,2025-06-01
+2,Write documentation,Medium,Incomplete,2025-07-05
+3,Add new task feature,High,Incomplete,2025-06-30
+4,Refactor old code,Low,Complete,2025-06-15
+5,Design database schema,High,Complete,2025-06-10
+6,Test edge cases,Medium,Incomplete,2025-07-01

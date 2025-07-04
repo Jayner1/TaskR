@@ -2,6 +2,7 @@ library(httr)
 library(jsonlite)
 library(dplyr)
 library(ggplot2)
+library(lubridate)  # For date handling
 
 project_id <- "task-manager-706fc"
 collection <- "tasks"
@@ -29,28 +30,22 @@ parse_tasks <- function(raw_data) {
     message("No tasks found in Firestore.")
     return(data.frame())
   }
-  
-  # The 'fields' column is itself a data frame with nested columns
+
   fields_df <- docs_df$fields
   
   if (is.null(fields_df) || nrow(fields_df) == 0) {
     message("No fields data found.")
     return(data.frame())
   }
-  
-  # Extract columns safely with null coalescing fallback
-  description <- if ("description" %in% names(fields_df)) fields_df$description$stringValue else rep(NA, nrow(fields_df))
-  category_id <- if ("category_id" %in% names(fields_df)) as.integer(fields_df$category_id$integerValue) else rep(NA, nrow(fields_df))
-  priority_id <- if ("priority_id" %in% names(fields_df)) as.integer(fields_df$priority_id$integerValue) else rep(NA, nrow(fields_df))
-  is_completed <- if ("_completed" %in% names(fields_df)) fields_df$`_completed`$booleanValue else rep(NA, nrow(fields_df))
-  # Try alternative field name if needed:
-  if (all(is.na(is_completed)) && "is_completed" %in% names(fields_df)) {
-    is_completed <- fields_df$is_completed$booleanValue
-  }
-  firebaseId <- if ("firebaseId" %in% names(fields_df)) fields_df$firebaseId$stringValue else rep(NA, nrow(fields_df))
-  task_id <- if ("task_id" %in% names(fields_df)) as.integer(fields_df$task_id$integerValue) else rep(NA, nrow(fields_df))
-  
-  # Construct data frame
+
+  description <- fields_df$description$stringValue %||% rep(NA, nrow(fields_df))
+  category_id <- as.integer(fields_df$category_id$integerValue %||% rep(NA, nrow(fields_df)))
+  priority_id <- as.integer(fields_df$priority_id$integerValue %||% rep(NA, nrow(fields_df)))
+  is_completed <- fields_df$`_completed`$booleanValue %||% rep(NA, nrow(fields_df))
+  firebaseId <- fields_df$firebaseId$stringValue %||% rep(NA, nrow(fields_df))
+  task_id <- as.integer(fields_df$task_id$integerValue %||% rep(NA, nrow(fields_df)))
+  due_date <- fields_df$due_date$stringValue %||% rep(NA, nrow(fields_df))
+
   df <- data.frame(
     description = description,
     category_id = category_id,
@@ -58,32 +53,37 @@ parse_tasks <- function(raw_data) {
     is_completed = is_completed,
     firebaseId = firebaseId,
     task_id = task_id,
+    due_date = due_date,
     stringsAsFactors = FALSE
   )
-  
-  # Remove rows missing required fields
-  df <- df[complete.cases(df[, c("priority_id", "is_completed")]), ]
-  
+
+  df <- df[complete.cases(df[, c("priority_id", "is_completed", "due_date")]), ]
+
   if (nrow(df) == 0) {
-    message("No valid task documents with required fields found after filtering.")
+    message("No valid tasks found.")
     return(data.frame())
   }
-  
-  df
+
+  return(df)
 }
 
-# Main
+# Fetch and parse tasks
 raw_data <- fetch_tasks()
-
 tasks_df <- parse_tasks(raw_data)
 
-if (nrow(tasks_df) == 0) {
-  stop("No task data to process.")
-}
+if (nrow(tasks_df) == 0) stop("No task data to process.")
 
+# Convert due_date to actual Date objects
+tasks_df$due_date <- ymd(tasks_df$due_date)
+
+# Add overdue status column
+today <- Sys.Date()
+tasks_df$overdue <- ifelse(!tasks_df$is_completed & tasks_df$due_date < today, "Overdue", "On Time")
+
+# ---- Plot 1: Completion by Priority ----
 tasks_df$is_completed <- factor(tasks_df$is_completed, levels = c(FALSE, TRUE), labels = c("Incomplete", "Completed"))
 
-plot <- ggplot(tasks_df, aes(x = factor(priority_id), fill = is_completed)) +
+p1 <- ggplot(tasks_df, aes(x = factor(priority_id), fill = is_completed)) +
   geom_bar(position = "dodge") +
   labs(
     title = "Task Completion by Priority",
@@ -92,23 +92,25 @@ plot <- ggplot(tasks_df, aes(x = factor(priority_id), fill = is_completed)) +
     fill = "Status"
   ) +
   scale_fill_manual(values = c("tomato", "springgreen")) +
-  theme_minimal() +
-  theme(
-    plot.background = element_rect(fill = "black", color = NA),
-    panel.background = element_rect(fill = "black"),
-    panel.grid.major = element_line(color = "gray40"),
-    panel.grid.minor = element_line(color = "gray30"),
-    axis.text = element_text(color = "white"),
-    axis.title = element_text(color = "white"),
-    plot.title = element_text(color = "white", size = 16, face = "bold"),
-    legend.background = element_rect(fill = "black"),
-    legend.key = element_rect(fill = "black"),
-    legend.text = element_text(color = "white"),
-    legend.title = element_text(color = "white")
-  )
+  theme_minimal()
 
-print(plot)
+ggsave("task_completion_by_priority.png", p1, width = 7, height = 5, bg = "white")
 
-ggsave("task_completion_by_priority.png", plot = plot, width = 7, height = 5, bg = "black")
+# ---- Plot 2: Overdue Task Breakdown ----
+p2 <- ggplot(tasks_df, aes(x = overdue, fill = is_completed)) +
+  geom_bar(position = "dodge") +
+  labs(
+    title = "Overdue vs On-Time Tasks",
+    x = "Due Status",
+    y = "Count",
+    fill = "Completion"
+  ) +
+  scale_fill_manual(values = c("tomato", "springgreen")) +
+  theme_minimal()
 
-message("✅ Plot saved as 'task_completion_by_priority.png' in working directory.")
+ggsave("task_overdue_status.png", p2, width = 7, height = 5, bg = "white")
+
+# ---- Console Summary ----
+cat("✅ Plots saved: task_completion_by_priority.png and task_overdue_status.png\n")
+cat("\n📋 Overdue Task Summary:\n")
+print(tasks_df[tasks_df$overdue == "Overdue", c("description", "due_date", "is_completed")])

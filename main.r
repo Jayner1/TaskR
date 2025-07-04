@@ -1,8 +1,12 @@
-# Load required libraries
 library(tidyverse)
+library(lubridate)  # for date parsing and handling
 
 # Load CSV data
 task_data <- read_csv("tasks.csv")
+
+# Convert due_date column to Date type (assuming due_date exists)
+task_data <- task_data %>%
+  mutate(due_date = ymd(due_date))  # parse 'YYYY-MM-DD' strings to Date
 
 # Display first few rows
 print("Task Data Preview:")
@@ -27,6 +31,20 @@ filter_by_priority <- function(data, level) {
   print(filtered)
 }
 
+# Function to filter tasks by overdue status
+filter_overdue_tasks <- function(data) {
+  today <- Sys.Date()
+  
+  overdue <- filter(data, status != "Complete" & due_date < today)
+  upcoming <- filter(data, status != "Complete" & due_date >= today)
+  
+  cat("\n--- Overdue Tasks ---\n")
+  print(overdue)
+  
+  cat("\n--- Upcoming Tasks ---\n")
+  print(upcoming)
+}
+
 # Function to plot task counts by priority and status
 plot_tasks <- function(data) {
   ggplot(data, aes(x = priority, fill = status)) +
@@ -40,4 +58,5 @@ plot_tasks <- function(data) {
 # Run the program
 display_summary(task_data)                    # Show summary
 filter_by_priority(task_data, "High")         # Filter example
+filter_overdue_tasks(task_data)               # Overdue filtering
 plot_tasks(task_data)                         # Show visualization
