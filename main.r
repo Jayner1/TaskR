@@ -1,12 +1,12 @@
 library(tidyverse)
-library(lubridate)  # for date parsing and handling
+library(lubridate)
 
 # Load CSV data
 task_data <- read_csv("tasks.csv")
 
 # Convert due_date column to Date type (assuming due_date exists)
 task_data <- task_data %>%
-  mutate(due_date = ymd(due_date))  # parse 'YYYY-MM-DD' strings to Date
+  mutate(due_date = ymd(due_date))
 
 # Display first few rows
 print("Task Data Preview:")
@@ -56,7 +56,7 @@ plot_tasks <- function(data) {
 }
 
 # Run the program
-display_summary(task_data)                    # Show summary
-filter_by_priority(task_data, "High")         # Filter example
-filter_overdue_tasks(task_data)               # Overdue filtering
-plot_tasks(task_data)                         # Show visualization
+display_summary(task_data)
+filter_by_priority(task_data, "High")
+filter_overdue_tasks(task_data)
+plot_tasks(task_data)

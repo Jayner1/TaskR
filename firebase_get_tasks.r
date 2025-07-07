@@ -2,7 +2,7 @@ library(httr)
 library(jsonlite)
 library(dplyr)
 library(ggplot2)
-library(lubridate)  # For date handling
+library(lubridate)
 
 project_id <- "task-manager-706fc"
 collection <- "tasks"
@@ -38,26 +38,26 @@ parse_tasks <- function(raw_data) {
     return(data.frame())
   }
 
-  description <- fields_df$description$stringValue %||% rep(NA, nrow(fields_df))
-  category_id <- as.integer(fields_df$category_id$integerValue %||% rep(NA, nrow(fields_df)))
-  priority_id <- as.integer(fields_df$priority_id$integerValue %||% rep(NA, nrow(fields_df)))
-  is_completed <- fields_df$`_completed`$booleanValue %||% rep(NA, nrow(fields_df))
-  firebaseId <- fields_df$firebaseId$stringValue %||% rep(NA, nrow(fields_df))
-  task_id <- as.integer(fields_df$task_id$integerValue %||% rep(NA, nrow(fields_df)))
-  due_date <- fields_df$due_date$stringValue %||% rep(NA, nrow(fields_df))
+  description   <- fields_df$description$stringValue %||% rep(NA, nrow(fields_df))
+  category_id   <- as.integer(fields_df$category_id$integerValue %||% rep(NA, nrow(fields_df)))
+  priority_id   <- as.integer(fields_df$priority_id$integerValue %||% rep(-1, nrow(fields_df)))
+  is_completed  <- fields_df$is_completed$booleanValue %||% rep(FALSE, nrow(fields_df))
+  firebaseId    <- fields_df$firebaseId$stringValue %||% rep(NA, nrow(fields_df))
+  task_id       <- as.integer(fields_df$task_id$integerValue %||% rep(NA, nrow(fields_df)))
+  due_date      <- fields_df$due_date$stringValue %||% rep(NA, nrow(fields_df))
 
   df <- data.frame(
-    description = description,
-    category_id = category_id,
-    priority_id = priority_id,
-    is_completed = is_completed,
-    firebaseId = firebaseId,
-    task_id = task_id,
-    due_date = due_date,
+    description   = description,
+    category_id   = category_id,
+    priority_id   = priority_id,
+    is_completed  = is_completed,
+    firebaseId    = firebaseId,
+    task_id       = task_id,
+    due_date      = due_date,
     stringsAsFactors = FALSE
   )
 
-  df <- df[complete.cases(df[, c("priority_id", "is_completed", "due_date")]), ]
+  df <- df %>% filter(!is.na(description) & !is.na(priority_id) & !is.na(is_completed))
 
   if (nrow(df) == 0) {
     message("No valid tasks found.")
@@ -73,12 +73,12 @@ tasks_df <- parse_tasks(raw_data)
 
 if (nrow(tasks_df) == 0) stop("No task data to process.")
 
-# Convert due_date to actual Date objects
+# Convert due_date to Date
 tasks_df$due_date <- ymd(tasks_df$due_date)
 
 # Add overdue status column
 today <- Sys.Date()
-tasks_df$overdue <- ifelse(!tasks_df$is_completed & tasks_df$due_date < today, "Overdue", "On Time")
+tasks_df$overdue <- ifelse(!tasks_df$is_completed & !is.na(tasks_df$due_date) & tasks_df$due_date < today, "Overdue", "On Time")
 
 # ---- Plot 1: Completion by Priority ----
 tasks_df$is_completed <- factor(tasks_df$is_completed, levels = c(FALSE, TRUE), labels = c("Incomplete", "Completed"))
@@ -110,7 +110,11 @@ p2 <- ggplot(tasks_df, aes(x = overdue, fill = is_completed)) +
 
 ggsave("task_overdue_status.png", p2, width = 7, height = 5, bg = "white")
 
+# ---- CSV Export ----
+write.csv(tasks_df, "firebase_tasks_export.csv", row.names = FALSE)
+
 # ---- Console Summary ----
 cat("✅ Plots saved: task_completion_by_priority.png and task_overdue_status.png\n")
+cat("✅ Task data exported to: firebase_tasks_export.csv\n")
 cat("\n📋 Overdue Task Summary:\n")
 print(tasks_df[tasks_df$overdue == "Overdue", c("description", "due_date", "is_completed")])
